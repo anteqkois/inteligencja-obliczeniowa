@@ -4,7 +4,8 @@ from numba import njit
 def route_length_np(distance_matrix, route):
     return np.sum(distance_matrix[route[:-1], route[1:]]) + distance_matrix[route[-1], route[0]]
 
-@njit
+# use optymalized version
+@njit(cache=True)
 def route_length_fast(distance_matrix, route):
     total = 0.0
     n = len(route)

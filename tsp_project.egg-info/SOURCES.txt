@@ -1,6 +1,0 @@
-README.md
-pyproject.toml
-tsp_project.egg-info/PKG-INFO
-tsp_project.egg-info/SOURCES.txt
-tsp_project.egg-info/dependency_links.txt
-tsp_project.egg-info/top_level.txt
