@@ -1,3 +1,10 @@
+Metadata-Version: 2.4
+Name: tsp-project
+Version: 0.1.0
+Summary: TSP project for AGH
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
 # inteligencja-obliczeniowa
 
 python -m venv venv        # lub: python3 -m venv venv
