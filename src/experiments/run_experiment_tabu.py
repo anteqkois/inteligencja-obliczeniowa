@@ -1,57 +1,53 @@
 import time
-import pandas as pd
 import numpy as np
+import pandas as pd
 from src.utils.tsp_loader import load_tsp_matrix
-from src.algorithms.ihc_numba import solve_tsp
+from src.algorithms.tabu import solve_tsp
 from src.utils.result_saver import save_experiment_results
 
+
 # ==============================================================
-# EKSPERYMENT DLA ALGORYTMU ITERATIVE HILL CLIMBING (IHC)
+# EKSPERYMENT DLA ALGORYTMU TABU SEARCH (TS)
 # ==============================================================
-# Sprawdza wpływ parametrów:
-#   - n_starts
+# Testowane parametry:
 #   - max_iter
 #   - stop_no_improve
+#   - tabu_tenure
 #   - neighborhood_type
 # ==============================================================
 
 TSP_FILES = ["Dane_TSP_48.xlsx"]
-# PARAM_GRID = {
-#     "n_starts": [5, 10, 20, 50], # liczba losowych restartów wspinaczki
-#     "max_iter": [100, 500, 1000], # maksymalna liczba iteracji jednej wspinaczki
-#     "stop_no_improve": [10, 50, 100], # ile kroków bez poprawy kończy wspinaczkę
-#     # "neighborhood_type": ["swap", "insert", "two_opt"],
-#     "neighborhood_type": ["two_opt"],
-# }
+
 PARAM_GRID = {
-    "n_starts": [800], # liczba losowych restartów wspinaczki
-    "max_iter": [6000], # maksymalna liczba iteracji jednej wspinaczki
-    "stop_no_improve": [1200], # ile kroków bez poprawy kończy wspinaczkę
-    "neighborhood_type": ["two_opt"],
+    "max_iter": [1000, 2000],
+    "stop_no_improve": [100, 200],
+    "tabu_tenure": [5, 10, 20],
+    "neighborhood_type": ["swap", "two_opt"],
 }
+
 REPEATS = 5
 results = []
 
 print("🧠 Warm-up Numba (kompilacja JIT)...")
 D = load_tsp_matrix(TSP_FILES[0])
-_ = solve_tsp(D, {"n_starts": 2})
+_ = solve_tsp(D, {"max_iter": 10, "tabu_tenure": 5})
 print("✅ Kompilacja zakończona. Start eksperymentu...\n")
 
 for tsp_file in TSP_FILES:
     print(f"\n📂 Instancja: {tsp_file}")
     D = load_tsp_matrix(tsp_file)
 
-    for n_starts in PARAM_GRID["n_starts"]:
-        for max_iter in PARAM_GRID["max_iter"]:
-            for stop_no_improve in PARAM_GRID["stop_no_improve"]:
+    for max_iter in PARAM_GRID["max_iter"]:
+        for stop_no_improve in PARAM_GRID["stop_no_improve"]:
+            for tabu_tenure in PARAM_GRID["tabu_tenure"]:
                 for neighborhood_type in PARAM_GRID["neighborhood_type"]:
                     costs, runtimes = [], []
 
                     for _ in range(REPEATS):
                         params = {
-                            "n_starts": n_starts,
                             "max_iter": max_iter,
                             "stop_no_improve": stop_no_improve,
+                            "tabu_tenure": tabu_tenure,
                             "neighborhood_type": neighborhood_type,
                         }
                         start_t = time.perf_counter()
@@ -63,9 +59,9 @@ for tsp_file in TSP_FILES:
 
                     results.append({
                         "instance": tsp_file,
-                        "n_starts": n_starts,
                         "max_iter": max_iter,
                         "stop_no_improve": stop_no_improve,
+                        "tabu_tenure": tabu_tenure,
                         "neighborhood_type": neighborhood_type,
                         "mean_cost": round(np.mean(costs), 3),
                         "min_cost": round(np.min(costs), 3),
@@ -74,7 +70,7 @@ for tsp_file in TSP_FILES:
 
 # --- zapis wyników ---
 df = pd.DataFrame(results)
-save_experiment_results(df, filename="ihc_experiment_results.csv", subfolder="IHC")
+save_experiment_results(df, filename="tabu_experiment_results.csv", subfolder="TS")
 
 # --- raport ---
 print("\n📊 Podsumowanie wyników:")
