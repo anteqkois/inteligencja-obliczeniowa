@@ -3,6 +3,7 @@ import time
 from numba import njit
 from src.utils.distance import route_length_fast
 from src.utils.neighborhoods_numba import neighbor_cost
+from src.utils.neighborhoods_numba_delta import neighbor_cost_delta_numba
 
 
 # ALGORYTM SYMULOWANEGO WYŻARZANIA (SIMULATED ANNEALING - SA)
@@ -104,6 +105,83 @@ def simulated_annealing_numba(distance_matrix, route, T0, T_min, alpha, max_iter
 
     return best_route, best_cost
 
+@njit(cache=True)
+def simulated_annealing_delta_numba(distance_matrix, route, T0, T_min, alpha, max_iter, neighbor_fn_id):
+    """
+    Pojedyncze wykonanie algorytmu symulowanego wyżarzania.
+    W każdej iteracji obniża temperaturę i stosuje regułę akceptacji
+    zależną od jakości nowego rozwiązania oraz aktualnej temperatury.
+
+    Parametry:
+        distance_matrix : np.ndarray (n x n)
+            Macierz odległości pomiędzy miastami.
+
+        route : np.ndarray (n)
+            Trasa początkowa, będąca permutacją miast.
+
+        T0 : float
+            Temperatura początkowa.
+
+        T_min : float
+            Minimalna temperatura. Osiągnięcie tej wartości
+            kończy działanie algorytmu.
+
+        alpha : float
+            Współczynnik chłodzenia kontrolujący tempo obniżania
+            temperatury (T = T * alpha).
+
+        max_iter : int
+            Maksymalna liczba iteracji algorytmu.
+
+        neighbor_fn_id : int
+            Id operatora sąsiedztwa:
+              0 - swap
+              1 - two-opt
+              2 - insert
+
+    Zwraca:
+        best_route : np.ndarray
+            Najlepsze znalezione rozwiązanie.
+        best_cost : float
+            Koszt tej trasy.
+    """
+
+    # bieżąca trasa i jej koszt
+    current_route = route.copy()
+    current_cost = route_length_fast(distance_matrix, current_route)
+
+    # najlepsze dotychczasowe rozwiązanie
+    best_route = current_route.copy()
+    best_cost = current_cost
+
+    T = T0
+    iter_count = 0
+
+    # główna pętla SA
+    while T > T_min and iter_count < max_iter:
+
+        # szybkie liczenie kosztu z użyciem DELTA
+        new_route, new_cost = neighbor_cost_delta_numba(
+            distance_matrix, current_route, current_cost, neighbor_fn_id
+        )
+        delta = new_cost - current_cost
+
+        # reguła akceptacji, akceptujemy poprawę lub gorsze rozwiązanie z pewnym prawdopodobieństwem
+        if delta < 0 or np.random.random() < np.exp(-delta / T):
+            current_route = new_route
+            current_cost = new_cost
+
+            # aktualizacja najlepszego rozwiązania
+            if new_cost < best_cost:
+                best_cost = new_cost
+                best_route = new_route
+
+        # obniżenie temperatury i przejście do kolejnego kroku
+        T *= alpha
+        iter_count += 1
+
+    return best_route, best_cost
+
 
 # GŁÓWNA FUNKCJA ROZWIĄZUJĄCA TSP METODĄ SA
 def solve_tsp(distance_matrix, params):
@@ -146,6 +224,7 @@ def solve_tsp(distance_matrix, params):
     alpha = float(params.get("alpha", 0.99))
     max_iter = int(params.get("max_iter", 5000))
     neighborhood_type = params.get("neighborhood_type", "swap")
+    use_delta = params.get("use_delta", False)
 
     # przypisanie operatora sąsiedztwa
     neighborhood_map = {"swap": 0, "two_opt": 1, "insert": 2}
@@ -155,7 +234,8 @@ def solve_tsp(distance_matrix, params):
     route = np.random.permutation(n)
 
     # uruchomienie algorytmu SA
-    best_route, best_cost = simulated_annealing_numba(
+    simulated_annealing_fn = simulated_annealing_delta_numba if use_delta is True else simulated_annealing_numba
+    best_route, best_cost = simulated_annealing_fn(
         distance_matrix, route, T0, T_min, alpha, max_iter, neighbor_fn_id
     )
 
