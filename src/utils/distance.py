@@ -37,7 +37,7 @@ def route_length_np(distance_matrix, route):
 
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def route_length_fast(distance_matrix, route):
     """
     Obliczanie długości trasy (wersja szybka -> Numba)

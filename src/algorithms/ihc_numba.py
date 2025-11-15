@@ -22,7 +22,7 @@ from src.utils.neighborhoods_numba import neighbor_cost
 # ---------------------------------------------------------------
 
 # NUMBA — pojedyncza wspinaczka lokalna
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def hill_climb_numba(distance_matrix, route, max_iter, stop_no_improve, neighbor_fn_id):
     """
     Hill Climb (wersja przyspieszona przez Numba)

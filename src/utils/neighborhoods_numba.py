@@ -19,7 +19,7 @@ from src.utils.distance import route_length_fast
 # ------------------------------------
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def neighbor_swap(route):
     """
     Operator sąsiedztwa: SWAP
@@ -48,7 +48,7 @@ def neighbor_swap(route):
     return new_route
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def neighbor_two_opt(route):
     """
     Operator sąsiedztwa: TWO-OPT
@@ -78,7 +78,7 @@ def neighbor_two_opt(route):
     return new_route
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def neighbor_insert(route):
     """
     Operator sąsiedztwa: INSERT
@@ -114,7 +114,7 @@ def neighbor_insert(route):
     return new_route
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True, fastmath=True)
 def neighbor_cost(distance_matrix, route, neighbor_fn_id):
     """
     Generator sąsiada + obliczanie kosztu
