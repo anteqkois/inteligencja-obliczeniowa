@@ -29,7 +29,7 @@ from src.utils.neighborhoods_numba import neighbor_cost
 
 
 # NUMBA — wewnętrzna pętla algorytmu SA
-@njit(cache=True, parallel=True, fastmath=True)
+@njit(cache=True)
 def simulated_annealing_numba(distance_matrix, route, T0, T_min, alpha, max_iter, neighbor_fn_id):
     """
     Pojedyncze wykonanie algorytmu symulowanego wyżarzania.
