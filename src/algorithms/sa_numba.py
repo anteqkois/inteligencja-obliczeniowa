@@ -2,7 +2,7 @@ import numpy as np
 import time
 from numba import njit
 from src.utils.distance import route_length_fast
-from src.utils.neighborhoods_numba import neighbor_cost
+from src.utils.neighborhoods_numba import neighbor_cost_numba
 from src.utils.neighborhoods_numba_delta import neighbor_cost_delta_numba
 
 
@@ -86,7 +86,7 @@ def simulated_annealing_numba(distance_matrix, route, T0, T_min, alpha, max_iter
     while T > T_min and iter_count < max_iter:
 
         # generowanie sąsiada
-        new_route, new_cost = neighbor_cost(distance_matrix, current_route, neighbor_fn_id)
+        new_route, new_cost = neighbor_cost_numba(distance_matrix, current_route, neighbor_fn_id)
         delta = new_cost - current_cost
 
         # reguła akceptacji, akceptujemy poprawę lub gorsze rozwiązanie z pewnym prawdopodobieństwem

@@ -2,7 +2,7 @@ import numpy as np
 import time
 from numba import njit
 from src.utils.distance import route_length_fast
-from src.utils.neighborhoods_numba import neighbor_cost
+from src.utils.neighborhoods_numba import neighbor_cost_numba
 from src.utils.neighborhoods_numba_delta import neighbor_cost_delta_numba
 
 # ALGORYTM IHC — ITERATIVE HILL CLIMBING
@@ -77,7 +77,7 @@ def hill_climb_numba(distance_matrix, route, max_iter, stop_no_improve, neighbor
 
         # wygenerowanie sąsiada bieżącego rozwiązania
         # Jest to zależne od neighbor_fn_id, czyli metody jaka została wybrana do dobierania sąsiada
-        candidate, candidate_cost = neighbor_cost(
+        candidate, candidate_cost = neighbor_cost_numba(
             distance_matrix, best_route, neighbor_fn_id
         )
 

@@ -115,7 +115,7 @@ def neighbor_insert(route):
 
 
 @njit(cache=True)
-def neighbor_cost(distance_matrix, route, neighbor_fn_id):
+def neighbor_cost_numba(distance_matrix, route, neighbor_fn_id):
     """
     Generator sąsiada + obliczanie kosztu
     -------------------------------------
