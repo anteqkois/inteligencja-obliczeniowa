@@ -3,6 +3,7 @@ import time
 from numba import njit
 from src.utils.distance import route_length_fast
 from src.utils.neighborhoods_numba import neighbor_cost
+from src.utils.neighborhoods_numba_delta import neighbor_cost_delta_numba
 
 # ALGORYTM IHC — ITERATIVE HILL CLIMBING
 # ---------------------------------------
@@ -20,6 +21,7 @@ from src.utils.neighborhoods_numba import neighbor_cost
 #
 # Złożoność obliczeniowa: O(n_starts · max_iter · koszt_sąsiedztwa)
 # ---------------------------------------------------------------
+
 
 # NUMBA — pojedyncza wspinaczka lokalna
 @njit(cache=True)
@@ -76,9 +78,82 @@ def hill_climb_numba(distance_matrix, route, max_iter, stop_no_improve, neighbor
         # wygenerowanie sąsiada bieżącego rozwiązania
         # Jest to zależne od neighbor_fn_id, czyli metody jaka została wybrana do dobierania sąsiada
         candidate, candidate_cost = neighbor_cost(
-            distance_matrix,
-            best_route,
-            neighbor_fn_id
+            distance_matrix, best_route, neighbor_fn_id
+        )
+
+        # jeśli sąsiad jest lepszy to przechodzimy do niego
+        if candidate_cost < best_cost:
+            best_cost = candidate_cost
+            best_route = candidate
+            no_improve = 0
+        else:
+            # jeśli brak poprawy to zwiększamy licznik stagnacji
+            no_improve += 1
+
+        # jeśli zbyt długo nie było postępu to kończymy
+        if no_improve >= stop_no_improve:
+            break
+
+    return best_route, best_cost
+
+
+@njit(cache=True)
+def hill_climb_delta_numba(
+    distance_matrix, route, max_iter, stop_no_improve, neighbor_fn_id
+):
+    """
+    Hill Climb (wersja przyspieszona przez Numba)
+    --------------------------------------------
+    Funkcja wykonuje jedną wspinaczkę lokalną rozpoczynając
+    od podanej trasy startowej. W każdej iteracji generuje
+    sąsiada bieżącego rozwiązania i przechodzi do niego tylko
+    wtedy, gdy ma on mniejszy koszt. Przeszukiwanie kończy się,
+    gdy przez określoną liczbę kroków nie pojawi się żadna
+    poprawa lub gdy zostanie osiągnięty limit iteracji.
+
+    Parametry:
+        distance_matrix : np.ndarray (n x n)
+            Macierz odległości między miastami. distance_matrix[i,j]
+            określa koszt przejścia z miasta i do j.
+
+        route : np.ndarray (n)
+            Trasa startowa, będąca permutacją indeksów miast.
+            Jest to punkt wyjścia dla lokalnego przeszukiwania.
+
+        max_iter : int
+            Maksymalna liczba iteracji algorytmu.
+
+        stop_no_improve : int
+            Maksymalna liczba kolejnych iteracji bez poprawy.
+            Po osiągnięciu tej wartości wspinaczka zostaje przerwana.
+
+        neighbor_fn_id : int
+            Identyfikator operatora sąsiedztwa:
+              0 - swap
+              1 - two-opt
+              2 - insert
+
+    Zwraca:
+        best_route : np.ndarray
+            Najlepsza znaleziona trasa.
+        best_cost : float
+            Koszt tej trasy.
+    """
+
+    # ustawienie bieżącego rozwiązania jako startowego
+    best_route = route.copy()
+    best_cost = route_length_fast(distance_matrix, best_route)
+
+    # licznik iteracji bez poprawy
+    no_improve = 0
+
+    # główna pętla wspinaczki lokalnej
+    for _ in range(max_iter):
+
+        # wygenerowanie sąsiada bieżącego rozwiązania
+        # Jest to zależne od neighbor_fn_id, czyli metody jaka została wybrana do dobierania sąsiada
+        candidate, candidate_cost = neighbor_cost_delta_numba(
+            distance_matrix, best_route, best_cost, neighbor_fn_id
         )
 
         # jeśli sąsiad jest lepszy to przechodzimy do niego
@@ -144,6 +219,7 @@ def solve_tsp(distance_matrix, params):
     max_iter = int(params.get("max_iter", 500))
     stop_no_improve = int(params.get("stop_no_improve", 50))
     neighborhood_type = params.get("neighborhood_type", "swap")
+    use_delta = params.get("use_delta", False)
 
     # zamiana nazwy operatora sąsiedztwa na kod liczbowy dla Numba
     # Numba:
@@ -158,18 +234,15 @@ def solve_tsp(distance_matrix, params):
     best_cost = np.inf
 
     # wielokrotne losowe restarty i uruchomienia HC
+    hill_climb_fn = hill_climb_delta_numba if use_delta is True else hill_climb_numba
     for _ in range(n_starts):
 
         # losowa trasa startowa dla bieżącego uruchomienia HC
         route = np.random.permutation(n)
 
         # uruchomienie pojedynczej wspinaczki
-        local_route, local_cost = hill_climb_numba(
-            distance_matrix,
-            route,
-            max_iter,
-            stop_no_improve,
-            neighbor_fn_id
+        local_route, local_cost = hill_climb_fn(
+            distance_matrix, route, max_iter, stop_no_improve, neighbor_fn_id
         )
 
         # aktualizacja najlepszego globalnego rozwiązania
