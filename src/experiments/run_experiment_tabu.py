@@ -2,7 +2,7 @@ import time
 import numpy as np
 import pandas as pd
 from src.utils.tsp_loader import load_tsp_matrix
-from src.algorithms.tabu import solve_tsp
+from algorithms.tabu_full_path import solve_tsp
 from src.utils.result_saver import save_experiment_results
 
 
