@@ -2,58 +2,74 @@ import numpy as np
 import time
 from collections import deque
 from src.utils.distance import route_length_fast
-from src.utils.neighborhoods_numba import (
-    neighbor_swap,
-    neighbor_two_opt,
-    neighbor_insert,
-)
+from src.utils.neighborhoods_numba import get_neighbor_function
 
-# ============================================================
 # ALGORYTM TABU SEARCH (TS)
-# ============================================================
-# Heurystyka przeszukiwania lokalnego z pamięcią zakazów (tabu list).
+# ------------------------------------------------------------
+# Heurystyka przeszukiwania lokalnego wykorzystująca pamięć tabu,
+# czyli listę ruchów, które są tymczasowo zabronione. Celem tej
+# pamięci jest uniemożliwienie cyklicznego powrotu do niedawno
+# odwiedzonych rozwiązań, co pozwala eksplorować przestrzeń rozwiązań
+# efektywniej niż klasyczna wspinaczka lokalna.
 #
-# W każdej iteracji:
-#   1. Generujemy wielu kandydatów (n_neighbors) przy użyciu operatora sąsiedztwa.
-#   2. Wybieramy najlepszego kandydata, który nie jest tabu
-#      (lub spełnia warunek aspiracji – jest lepszy od globalnego optimum).
-#   3. Aktualizujemy bieżące rozwiązanie i dodajemy ruch do listy tabu.
-#   4. Kończymy, gdy brak poprawy przez określoną liczbę iteracji
-#      lub osiągnięto maksymalną liczbę iteracji.
+# Schemat działania:
+#   1. Start z losowej trasy początkowej.
+#   2. W każdej iteracji generacja wielu kandydatów (n_neighbors)
+#      przy użyciu wybranego operatora sąsiedztwa.
+#   3. Wybór najlepszego kandydata, który:
+#        - nie znajduje się na liście tabu
+#        - albo spełnia warunek aspiracji (jest lepszy niż globalne optimum).
+#   4. Aktualizacja rozwiązania bieżącego i dodanie ruchu do tabu.
+#   5. Zatrzymanie po osiągnięciu limitu iteracji lub liczby iteracji
+#      bez poprawy końcowego wyniku.
 #
-# Zalety:
-#   - pozwala unikać powrotu do wcześniejszych (lokalnych) minimów
-#   - potrafi eksplorować lepsze rejony przestrzeni rozwiązań niż Hill Climbing
-# ============================================================
+# Algorytm dobrze radzi sobie z unikaniem lokalnych minimów poprzez
+# kontrolowaną eksplorację obszarów, które klasyczne metody omijają.
+#
+# Złożoność obliczeniowa:
+#   O(max_iter · n_neighbors · koszt_sąsiedztwa)
+# ------------------------------------------------------------
 
 
 def tabu_search(distance_matrix, init_route, max_iter, stop_no_improve,
                 tabu_tenure, neighbor_fn, n_neighbors=30):
     """
-    Tabu Search z eksploracją wielu sąsiadów na iterację.
+    Właściwa pętla algorytmu Tabu Search wykonująca iteracyjne
+    przeszukiwanie lokalne z wykorzystaniem listy tabu.
 
     Parametry:
-        distance_matrix : np.ndarray
-            Macierz odległości NxN.
-        init_route : np.ndarray
-            Początkowa permutacja miast.
+        distance_matrix : np.ndarray (n x n)
+            Macierz odległości między miastami.
+
+        init_route : np.ndarray (n)
+            Trasa startowa wykorzystywana jako punkt początkowy.
+
         max_iter : int
-            Maksymalna liczba iteracji.
+            Maksymalna liczba iteracji algorytmu.
+
         stop_no_improve : int
-            Liczba iteracji bez poprawy, po której zatrzymujemy algorytm.
+            Liczba kolejnych iteracji bez poprawy najlepszego wyniku,
+            po której algorytm kończy pracę.
+
         tabu_tenure : int
-            Długość listy tabu (liczba ruchów pamiętanych).
+            Maksymalna długość listy tabu, określająca ile ostatnich
+            ruchów jest traktowanych jako zabronione.
+
         neighbor_fn : callable
-            Funkcja generująca sąsiada (Numba).
+            Funkcja generująca sąsiada na bazie aktualnej trasy.
+            Powinna implementować jeden z operatorów: swap, insert lub two_opt.
+
         n_neighbors : int
-            Liczba losowych sąsiadów testowanych w każdej iteracji.
+            Liczba kandydatów (losowych sąsiadów) generowanych w każdej iteracji.
 
     Zwraca:
         best_route : np.ndarray
-            Najlepsza znaleziona trasa.
+            Najlepsze rozwiązanie odnalezione podczas przeszukiwania.
+
         best_cost : float
             Koszt tej trasy.
     """
+
     n = len(init_route)
     current_route = init_route.copy()
     current_cost = route_length_fast(distance_matrix, current_route)
@@ -61,20 +77,24 @@ def tabu_search(distance_matrix, init_route, max_iter, stop_no_improve,
     best_route = current_route.copy()
     best_cost = current_cost
 
+    # lista tabu, która przechowuje ostatnie ruchy, aby unikać cykli
     tabu_list = deque(maxlen=tabu_tenure)
+
     no_improve = 0
 
+    # główna pętla TS
     for _ in range(max_iter):
+
         best_candidate = None
         best_candidate_cost = np.inf
 
-        # 🔁 eksploracja wielu sąsiadów
+        # eksploracja wielu sąsiadów
         for _ in range(n_neighbors):
             candidate = neighbor_fn(current_route)
             move_key = tuple(candidate)
             candidate_cost = route_length_fast(distance_matrix, candidate)
 
-            # warunek tabu (chyba że poprawa globalna)
+            # warunek tabu z aspiracją (jeśli poprawiamy globalne optimum to ignorujemy tabu)
             if move_key in tabu_list and candidate_cost >= best_cost:
                 continue
 
@@ -82,18 +102,19 @@ def tabu_search(distance_matrix, init_route, max_iter, stop_no_improve,
                 best_candidate = candidate
                 best_candidate_cost = candidate_cost
 
-        # brak poprawy — licznik stagnacji
+        # brak dobrego kandydata, stagnacja
         if best_candidate is None:
             no_improve += 1
             if no_improve >= stop_no_improve:
                 break
             continue
 
-        # aktualizacja rozwiązania i listy tabu
+        # aktualizacja rozwiązania
         current_route = best_candidate
         current_cost = best_candidate_cost
         tabu_list.append(tuple(best_candidate))
 
+        # aktualizacja najlepszego globalnego rozwiązania
         if current_cost < best_cost:
             best_cost = current_cost
             best_route = best_candidate.copy()
@@ -101,6 +122,7 @@ def tabu_search(distance_matrix, init_route, max_iter, stop_no_improve,
         else:
             no_improve += 1
 
+        # zatrzymanie przy długiej stagnacji
         if no_improve >= stop_no_improve:
             break
 
@@ -109,22 +131,36 @@ def tabu_search(distance_matrix, init_route, max_iter, stop_no_improve,
 
 def solve_tsp(distance_matrix, params):
     """
-    Funkcja główna: Tabu Search dla problemu TSP.
+    Tabu Search (TS)
+    ----------------
+    Funkcja uruchamia algorytm Tabu Search dla problemu TSP.
+    Inicjalizuje parametry, generuje losową trasę początkową
+    i wykonuje właściwe przeszukiwanie.
 
     Parametry:
-        distance_matrix : np.ndarray
-            Macierz odległości NxN.
+        distance_matrix : np.ndarray (n x n)
+            Macierz odległości pomiędzy wszystkimi miastami.
+
         params : dict
-            Parametry algorytmu:
-              - max_iter : int              — maks. liczba iteracji
-              - stop_no_improve : int       — limit braku poprawy
-              - tabu_tenure : int           — długość listy tabu
-              - neighborhood_type : str     — rodzaj sąsiedztwa ("swap", "insert", "two_opt")
-              - n_neighbors : int           — liczba sąsiadów przeszukiwanych w każdej iteracji
+            Parametry sterujące algorytmem:
+              'max_iter' : maksymalna liczba iteracji (int)
+              'stop_no_improve' : limit iteracji bez poprawy (int)
+              'tabu_tenure' : długość listy tabu (int)
+              'neighborhood_type' : typ operatora sąsiedztwa (str)
+                    dopuszczalne wartości: "swap", "insert", "two_opt"
+              'n_neighbors' : liczba sąsiadów generowanych w iteracji (int)
 
     Zwraca:
-        best_route, best_cost, runtime, meta
+        best_route : np.ndarray
+            Najlepsza znaleziona trasa.
+        best_cost : float
+            Koszt tej trasy.
+        runtime : float
+            Czas działania algorytmu.
+        meta : dict
+            Parametry uruchomienia, przydatne w analizie wyników.
     """
+
     start_time = time.perf_counter()
 
     n = distance_matrix.shape[0]
@@ -134,20 +170,12 @@ def solve_tsp(distance_matrix, params):
     neighborhood_type = params.get("neighborhood_type", "two_opt")
     n_neighbors = int(params.get("n_neighbors", 30))
 
-    # --- wybór operatora sąsiedztwa
-    if neighborhood_type == "swap":
-        neighbor_fn = neighbor_swap
-    elif neighborhood_type == "insert":
-        neighbor_fn = neighbor_insert
-    elif neighborhood_type == "two_opt":
-        neighbor_fn = neighbor_two_opt
-    else:
-        raise ValueError(f"Nieznany typ sąsiedztwa: {neighborhood_type}")
+    neighbor_fn = get_neighbor_function(neighborhood_type)
 
-    # --- losowa trasa startowa
+    # losowa trasa startowa
     init_route = np.random.permutation(n)
 
-    # --- uruchomienie głównego przeszukiwania tabu
+    # uruchomienie algorytmu TS
     best_route, best_cost = tabu_search(
         distance_matrix,
         init_route,
@@ -160,7 +188,6 @@ def solve_tsp(distance_matrix, params):
 
     runtime = time.perf_counter() - start_time
 
-    # --- metadane dla raportów
     meta = {
         "max_iter": max_iter,
         "stop_no_improve": stop_no_improve,

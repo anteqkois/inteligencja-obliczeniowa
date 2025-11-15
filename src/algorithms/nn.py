@@ -3,78 +3,96 @@ import time
 from src.utils.distance import route_length_fast
 
 
-# ============================================================
 # ALGORYTM NAJBLIŻSZEGO SĄSIADA (NEAREST NEIGHBOR - NN)
-# ============================================================
-# Klasyczny algorytm konstrukcyjny do rozwiązania problemu TSP.
-# Zaczynamy w wybranym mieście i w każdej iteracji wybieramy
-# najbliższe nieodwiedzone miasto. Proces trwa do odwiedzenia
-# wszystkich miast, po czym wracamy do miasta startowego.
+# ------------------------------------------------------
+# Algorytm konstrukcyjny tworzący trasę TSP w sposób zachłanny.
+# Rozpoczyna w zadanym mieście startowym, a następnie w każdej
+# iteracji wybiera najbliższe nieodwiedzone miasto. Proces trwa
+# do momentu odwiedzenia wszystkich miast, po czym następuje
+# powrót do miasta początkowego. Metoda jest szybka i prosta,
+# ale nie gwarantuje znalezienia rozwiązania optymalnego.
 #
-# Parametry wejściowe:
-#   - distance_matrix : macierz odległości (numpy.ndarray, n x n)
-#   - params : dict zawierający:
-#       • start_city – indeks miasta początkowego (int)
-#
-# Wyniki:
-#   - route : lista odwiedzonych miast w kolejności
-#   - cost : długość trasy (łącznie z powrotem do startu)
-#   - runtime : czas wykonania algorytmu [s]
-#   - meta : słownik z informacjami o parametrze startowym
-# ============================================================
+# Złożoność obliczeniowa: O(n²)
+# ------------------------------------------------------
 
 
 def solve_tsp(distance_matrix: np.ndarray, params: dict):
     """
-    Klasyczna implementacja algorytmu Najbliższego Sąsiada (NN)
-    -----------------------------------------------------------
-    Tworzy trasę komiwojażera rozpoczynając od wskazanego miasta
-    i iteracyjnie wybiera najbliższe nieodwiedzone miasto.
+    Nearest Neighbor (NN)
+    ---------------------
+    Implementacja klasycznego algorytmu Najbliższego Sąsiada dla TSP.
+    Algorytm rozpoczyna budowę trasy w podanym mieście startowym i
+    kolejno dołącza najbliższe nieodwiedzone miasto. Na końcu
+    dopełnia cykl, wracając do miasta początkowego.
 
-    Złożoność obliczeniowa: O(n²)
+    Parametry:
+        distance_matrix : np.ndarray (n x n)
+            Macierz odległości pomiędzy miastami. Element
+            distance_matrix[i,j] oznacza koszt przejścia z miasta i
+            do j. Na podstawie tej macierzy obliczana jest długość trasy.
+
+        params : dict
+            Zestaw parametrów sterujących:
+              'start_city' : indeks miasta początkowego (int).
+                  Określa, w którym mieście algorytm zaczyna budowę trasy.
+
+    Zwraca:
+        route : list[int]
+            Kolejność odwiedzanych miast w trakcie przeszukiwania.
+        cost : float
+            Całkowity koszt trasy, łącznie z powrotem do miasta startowego.
+        runtime : float
+            Czas wykonania algorytmu w sekundach.
+        meta : dict
+            Informacje pomocnicze związane z wykonaniem algorytmu.
     """
-    # --- Pomiar czasu rozpoczęcia
+
+    # pomiar czasu rozpoczęcia
     start_time = time.time()
 
-    # --- Pobranie danych wejściowych
-    n = distance_matrix.shape[0]          # liczba miast
-    start_city = int(params.get("start_city", 0))  # indeks miasta startowego
+    # liczba miast
+    n = distance_matrix.shape[0]
 
-    # --- Inicjalizacja pomocniczych struktur
-    visited = np.zeros(n, dtype=bool)     # tablica odwiedzin (True = odwiedzone)
-    route = [start_city]                  # kolejność odwiedzanych miast
-    visited[start_city] = True            # oznacz miasto startowe jako odwiedzone
-    current = start_city                  # aktualne miasto
+    # odczyt parametru miasta startowego
+    start_city = int(params.get("start_city", 0))
 
-    # --- Główna pętla budowania trasy
+    # tablica oznaczająca odwiedzone miasta
+    visited = np.zeros(n, dtype=bool)
+
+    # trasa rozpoczyna się w mieście startowym
+    route = [start_city]
+    visited[start_city] = True
+    current = start_city
+
+    # główna pętla budowania trasy
     for _ in range(n - 1):
-        # Kopiujemy odległości z bieżącego miasta
+
+        # odległości od bieżącego miasta
         dists = distance_matrix[current].copy()
 
-        # Miasta już odwiedzone ustawiamy na "nieskończony" dystans,
-        # żeby nie zostały ponownie wybrane
+        # miasta już odwiedzone ustawiamy na nieskończony koszt,
+        # aby nie były ponownie wybierane
         dists[visited] = np.inf
 
-        # Wybieramy indeks najbliższego nieodwiedzonego miasta
+        # wybór najbliższego nieodwiedzonego miasta
         next_city = int(np.argmin(dists))
 
-        # Aktualizujemy trasę i oznaczamy odwiedziny
+        # aktualizacja trasy i oznaczenie odwiedzin
         route.append(next_city)
         visited[next_city] = True
         current = next_city
 
-    # --- Obliczenie całkowitej długości trasy (łącznie z powrotem)
+    # obliczenie całkowitego kosztu trasy łącznie z powrotem
     cost = route_length_fast(distance_matrix, np.array(route))
 
-    # --- Pomiar czasu zakończenia
+    # pomiar czasu wykonania
     runtime = time.time() - start_time
 
-    # --- Dane meta pomocne przy raportowaniu
+    # dane informacyjne
     meta = {
         "start_city": start_city,
         "n_cities": n,
         "method": "nearest_neighbor"
     }
 
-    # --- Zwracamy komplet wyników
     return route, cost, runtime, meta
