@@ -29,15 +29,12 @@ pip-wheel-metadata/
 logs/
 *.log
 data/
-*.csv
 *.h5
 *.parquet
 *.xlsx
 plots/
 reports/
 *progress.json
-*result.csv
-*.pf
 *metadata.json
 
 ###############################################################################
