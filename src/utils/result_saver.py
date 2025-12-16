@@ -16,7 +16,8 @@ def save_experiment_results(
     time_seconds: int | None = None,
     subfolder: str | None = None,
     show_summary: bool = True,
-    summary_count: int = 20
+    summary_count: int = 20,
+    sort_by_cost: bool = True,
 ):
     """
     Zapis wyników eksperymentu do pliku CSV.
@@ -36,15 +37,15 @@ def save_experiment_results(
             Czy wypisać krótkie podsumowanie po zapisaniu wyników.
         summary_count : int
             Liczba wierszy pokazywanych w podsumowaniu.
+        sort_by_cost : bool
+            Czy sortować wyniki wg kolumny min_cost (domyślnie True).
 
     Zwraca:
         str : pełna ścieżka zapisanego pliku CSV.
     """
 
     # lokalizacja katalogu results/
-    project_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../")
-    )
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
     results_dir = os.path.join(project_root, "results")
 
     if subfolder:
@@ -53,7 +54,7 @@ def save_experiment_results(
     os.makedirs(results_dir, exist_ok=True)
 
     # sortowanie wyników według najlepszego min_cost (jeśli istnieje)
-    if "min_cost" in df.columns:
+    if sort_by_cost and "min_cost" in df.columns:
         df = df.sort_values(by="min_cost", ascending=True).reset_index(drop=True)
 
     # znacznik czasowy w nazwie pliku

@@ -57,7 +57,8 @@ def selection_ranking(population, costs):
     - im wyższa pozycja w rankingu, tym większa szansa na wybór
     """
     order = np.argsort(costs)
-    ranks = np.arange(1, len(population) + 1)
+    # Odwracamy rangi: najlepszy (pierwszy w order) dostaje N, najgorszy 1.
+    ranks = np.arange(len(population), 0, -1)
     probs = ranks / ranks.sum()
     idx = np.random.choice(len(population), p=probs)
     return population[order[idx]]
@@ -73,15 +74,18 @@ SELECTION_MAP = {
 # KRZYŻOWANIA
 def crossover_OX(p1, p2):
     """
-    OX - ORDER CROSSOVER
-    ====================
-    Idea:
-        - zachowuje kolejność z p1 na wycinku [i:j]
-        - pozostałe miasta wstawia wg kolejności z p2
+    OX - ORDER CROSSOVER (Krzyżowanie uporządkowane)
+    ================================================
+    Metoda kładąca nacisk na zachowanie względnej kolejności miast (sąsiedztwa).
 
-    Dlaczego działa:
-        - nie psuje struktury permutacji
-        - zachowuje relacje kolejnościowe z obu rodziców
+    ZASADA DZIAŁANIA:
+    1. Kopiujemy losowy wycinek (segment) trasy z Rodzica 1 do potomka w te same miejsca.
+    2. Wypełniamy pozostałe puste miejsca miastami z Rodzica 2.
+    3. KLUCZOWE: Miasta z Rodzica 2 pobieramy w kolejności występowania, zaczynając
+       od pozycji po drugim punkcie przecięcia (cyklicznie). Pomijamy te miasta,
+       które już znalazły się w potomku (z segmentu P1).
+
+    CEL: Zachowanie podciągów z P1 oraz względnej kolejności pozostałych miast z P2.
     """
     n = len(p1)
     i, j = sorted(random.sample(range(n), 2))
@@ -102,15 +106,20 @@ def crossover_OX(p1, p2):
 
 def crossover_PMX(p1, p2):
     """
-    PMX - PARTIALLY MATCHED CROSSOVER
-    =================================
-    Idea:
-        - zachowuje częściowe mapowanie pozycji między rodzicami
-        - elementy spoza segmentu są mapowane tak, aby nie tworzyć duplikatów
+    PMX - PARTIALLY MATCHED CROSSOVER (Częściowe dopasowanie)
+    =========================================================
+    Metoda zachowująca pozycje miast, rozwiązująca konflikty poprzez mapowanie.
 
-    Dlaczego działa:
-        - respektuje relacje pozycyjne
-        - zachowuje dopasowanie strukturalne między p1 i p2
+    ZASADA DZIAŁANIA:
+    1. Kopiujemy losowy segment z Rodzica 1 do potomka.
+    2. Pozostałe miasta próbujemy przepisać z Rodzica 2 na ich oryginalnych pozycjach.
+    3. KONFLIKT: Jeśli na danej pozycji w potomku już jest miasto (z segmentu P1),
+       to miasto z P2, które miało tam trafić, musi znaleźć inne miejsce.
+    4. ROZWIĄZANIE: Szukamy miejsca 'po nitce do kłębka' wykorzystując mapowanie
+       zdefiniowane przez parę segmentów (P1[i] <-> P2[i]). Wstawiamy miasto tam,
+       gdzie trafiłby element, który je "wypchnął".
+
+    CEL: Dziedziczenie absolutnych pozycji miast z możliwością "przesunięcia" w ramach mapowania.
     """
     n = len(p1)
     i, j = sorted(random.sample(range(n), 2))
@@ -135,15 +144,19 @@ def crossover_PMX(p1, p2):
 
 def crossover_CX(p1, p2):
     """
-    CX - CYCLE CROSSOVER
-    ====================
-    Idea:
-        - Buduje cykle zależności: p2[i] → pozycja w p1 → p2[pos] → ...
-        - W cyklu bierzemy wartości z p1, poza cyklem z p2.
+    CX - CYCLE CROSSOVER (Krzyżowanie cykliczne)
+    ============================================
+    Metoda, która gwarantuje, że każde miasto w potomku zajmuje DOKŁADNIE TĄ SAMĄ
+    pozycję, co u jednego z rodziców.
 
-    Dlaczego działa:
-        - cykle zachowują logiczną strukturę permutacji
-        - zapewnia 100% poprawną permutację bez duplikatów
+    ZASADA DZIAŁANIA:
+    1. Analizujemy cykle permutacji wyznaczone przez pary (P1[i], P2[i]).
+       (Startujemy od poz. 0, patrzymy co jest w P2, szukamy tego w P1, idziemy tam, itd.)
+    2. Wybieramy co drugi cykl (lub pierwszy) i kopiujemy miasta z Rodzica 1.
+    3. Pozostałe pozycje (należące do innych cykli) wypełniamy miastami z Rodzica 2.
+
+    CEL: Zachowanie absolutnych pozycji miast bez wprowadzania "obcych" relacji sąsiedztwa.
+    Potomek składa się z "puzzli" wyjętych wprost z rodziców bez przesuwania.
     """
     n = len(p1)
     child = [None] * n
@@ -228,6 +241,7 @@ def solve_tsp(distance_matrix, params):
     cross_fn = CROSSOVER_MAP[crossover_name]
 
     # inicjalizacja populacji
+    # Algorytm tworzy listę pop_size losowych permutacji (tras),
     population = [list(np.random.permutation(n)) for _ in range(pop_size)]
     costs = np.array(
         [route_length_fast(distance_matrix, np.array(r)) for r in population]
