@@ -46,7 +46,7 @@ def save_experiment_results(
 
     # lokalizacja katalogu results/
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-    results_dir = os.path.join(project_root, "results")
+    results_dir = os.path.join(project_root, "results_new")
 
     if subfolder:
         results_dir = os.path.join(results_dir, subfolder)
