@@ -1,4 +1,3 @@
-
 # 🌍 Rozwiązywanie Problemu Komiwojażera (TSP)
 
 Projekt skupia się na implementacji i analizie działania algorytmów metaheurystycznych rozwiązujących Problem Komiwojażera (Traveling Salesperson Problem). Celem było nie tylko napisanie działającego kodu, ale również jego optymalizacja oraz przetestowanie różnych wariantów i zestawień hiperparametrów.
@@ -78,6 +77,12 @@ Testy i strojenie hiperparametrów są czasochłonne. Wykorzystaliśmy moduł `m
 ---
 
 ## 🛠️ Jak uruchomić?
+
+Zainstalować potrzebne pakiety
+`python -m venv .venv`        # lub: python3 -m venv venv
+`source .venv/bin/activate`   # Linux/Mac
+`pip install -r requirements.txt`
+`pip install -e .`
 
 Najlepiej korzystać z przygotowanych notebooków w `src/notebooks`. 
 Przykładowo, aby przetestować Tabu Search z optymalizacją Optuna:

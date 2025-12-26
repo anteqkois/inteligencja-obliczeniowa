@@ -3,8 +3,12 @@
 ## GA 
 `results/GA/2025-11-27__23-26__174376_sec__results.csv`
 
-## GRASP
+## GRASP optymalization 1 (Compare delta usage)
+use_delta = True
 `results/GRASP/2025-11-17__06-27__35633_sec__results.csv`
+
+use_delta = False
+`results/GRASP/2025-12-15__14-51__51957_sec__results.csv`
 
 ## IHC
 `results/IHC/2025-11-17__11-36__8598_sec__with_delta__results.csv`
@@ -19,5 +23,12 @@
 `results/SA/2025-11-16__19-18__2333_sec__results.csv` - secondary file to analyze
 Choose the best
 
-## TS
+## TS optymalization 2 (Compare what we block)
+block: tabu_move
 `results/TS/2025-11-16__16-45__52983_sec__tabu_move_results.csv`
+
+block: tabu_full_path
+`results/TS/2025-12-16__05-06__41605_sec__tabu_move_results.csv`
+
+## TS with Optuna
+`results/TS_Optuna/2025-12-16__22-57__41522_sec__results.csv`
