@@ -82,7 +82,7 @@ if __name__ == "__main__":
                             "max_iter": max_iter,
                             "stop_no_improve": stop_no_improve,
                             "neighborhood_type": neighborhood_type,
-                            "use_delta": True
+                            "use_delta": False,
                         }
 
                         # multiprocessing — równoległe powtórzenia
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     print(f"\nŁączny czas eksperymentów: {elapsed/60:.2f} min ({elapsed:.2f} sek)")
 
     df = pd.DataFrame(results)
-    save_experiment_results(df, filename="with_delta__results.csv", time_seconds=int(elapsed), subfolder="IHC")
+    save_experiment_results(df, filename="no_delta__results.csv", time_seconds=int(elapsed), subfolder="IHC")
 
 
     # RAPORT

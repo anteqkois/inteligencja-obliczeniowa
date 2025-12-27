@@ -1,13 +1,9 @@
 # %%
-# GRASP – SKRYPT EKSPERYMENTALNY
-# Uruchamia serię eksperymentów dla algorytmu GRASP z różnymi
-# parametrami. Struktura analogiczna do IHC, TS, SA itd.
-#
-# Wymagane:
-#   - solve_tsp() z grasp_numba
-#   - run_single_repeat()
-#   - save_experiment_results()
-#   - load_tsp_matrix()
+# SKRYPT EKSPERYMENTALNY
+# Uruchamia analizę algorytmu Tabu Search (TS) dla różnych
+# konfiguracji parametrów. Dla każdej kombinacji wykonywane jest
+# kilka powtórzeń, zapisywane są statystyki jakości oraz czas
+# działania. Wyniki trafiają do pliku CSV.
 
 import time
 import pandas as pd
@@ -16,137 +12,115 @@ import itertools
 from multiprocessing import Pool, cpu_count
 
 from src.utils.tsp_loader import load_tsp_matrix
-from src.algorithms.grasp_numba import solve_tsp
-from src.utils.run_single_repeat import run_single_repeat
+from src.algorithms.tabu_move import solve_tsp
+# from src.algorithms.tabu_full_path import solve_tsp
 from src.utils.result_saver import save_experiment_results
+from src.utils.run_single_repeat import run_single_repeat
 
 
-# USTAWIENIA EKSPERYMENTU
-
+# USTAWIENIA
 TSP_FILES = ["Dane_TSP_48.xlsx", "Dane_TSP_76.xlsx", "Dane_TSP_127.xlsx"]
-# TSP_FILES = ["Dane_TSP_48.xlsx"]
 
-PARAM_GRID_GRASP = {
-    "alpha": [0.2, 0.4, 0.6, 0.8],
-    "iterations": [3_000, 5_000, 8_000, 10_000],
+PARAM_GRID = {
+    "max_iter": [10_000, 25_000, 75_000, 200_000],
+    "stop_no_improve": [1_000, 2_000, 5_000, 7_000],
+    "tabu_tenure": [10, 15, 25, 50],
+    "n_neighbors": [30, 60, 100, 150],
     "neighborhood_type": ["swap", "insert", "two_opt"],
-    # parametry local-search (IHC-light)
-    "ihc_max_iter": [4_000, 6_000, 8_000],
-    "ihc_stop_no_improve": [400, 800, 1_500],
-    # "use_delta": [True], # zawsze delta
-    "use_delta": [False], # bez delta
 }
 
 REPEATS = 5
 
-
 if __name__ == "__main__":
     results = []
 
-    # ROZGRZANIE
+    # ROZGRZANIE (KOMPILACJA JIT JEŚLI WYSTĘPUJE)
+    print("Rozgrzewanie (kompilacja JIT jeśli dotyczy)...")
+    D = load_tsp_matrix(TSP_FILES[0])
+    _ = solve_tsp(D, {"max_iter": 5, "tabu_tenure": 3, "n_neighbors": 5})
+    print("Kompilacja zakończona.\n")
 
-    print("Rozgrzewanie Numba (kompilacja GRASP + IHC-light)...")
-
-    D_tmp = load_tsp_matrix(TSP_FILES[0])
-
-    # poprawna rozgrzewka: solve_tsp wymaga neighborhood_type jako string
-    _ = solve_tsp(D_tmp, {
-        "alpha": 0.3,
-        "iterations": 2,
-        "neighborhood_type": "swap",
-        "ihc_max_iter": 50,
-        "ihc_stop_no_improve": 10,
-        "use_delta": False,
-    })
-
-    print("Rozgrzewanie zakończone.\n")
-
-
-    # LISTA KOMBINACJI PARAMETRÓW
-
+    # GŁÓWNA PĘTLA
+    # Obliczamy łączną liczbę kombinacji
     all_combos = list(itertools.product(
-        PARAM_GRID_GRASP["alpha"],
-        PARAM_GRID_GRASP["iterations"],
-        PARAM_GRID_GRASP["neighborhood_type"],
-        PARAM_GRID_GRASP["ihc_max_iter"],
-        PARAM_GRID_GRASP["ihc_stop_no_improve"],
-        PARAM_GRID_GRASP["use_delta"],
+        PARAM_GRID["max_iter"],
+        PARAM_GRID["stop_no_improve"],
+        PARAM_GRID["tabu_tenure"],
+        PARAM_GRID["n_neighbors"],
+        PARAM_GRID["neighborhood_type"],
     ))
-
     total = len(all_combos) * len(TSP_FILES)
     counter = 0
-
     start_total = time.perf_counter()
-
-
-    # ============================================
-    # GŁÓWNA PĘTLA
-    # ============================================
 
     for tsp_file in TSP_FILES:
         print(f"\nInstancja: {tsp_file}")
         D = load_tsp_matrix(tsp_file)
 
-        for alpha, iterations, neigh_type, ihc_iter, ihc_noimp, use_delta in all_combos:
+        for max_iter in PARAM_GRID["max_iter"]:
+            for stop_no_improve in PARAM_GRID["stop_no_improve"]:
+                for tabu_tenure in PARAM_GRID["tabu_tenure"]:
+                    for n_neighbors in PARAM_GRID["n_neighbors"]:
+                        for neighborhood_type in PARAM_GRID["neighborhood_type"]:
+                            counter += 1
 
-            counter += 1
-            print(
-                f"[{counter}/{total}] "
-                f"alpha={alpha}, iter={iterations}, neigh={neigh_type}, "
-                f"ihc_iter={ihc_iter}, ihc_noimp={ihc_noimp}, delta={use_delta}"
-            )
+                            print(
+                                f"[{counter}/{total}] "
+                                f"max_iter={max_iter}, "
+                                f"stop_no_improve={stop_no_improve}, "
+                                f"tabu_tenure={tabu_tenure}, "
+                                f"n_neighbors={n_neighbors}, "
+                                f"neighborhood_type={neighborhood_type}"
+                            )
 
-            params = {
-                "alpha": alpha,
-                "iterations": iterations,
-                "neighborhood_type": neigh_type,
-                "ihc_max_iter": ihc_iter,
-                "ihc_stop_no_improve": ihc_noimp,
-                "use_delta": use_delta,
-            }
+                            params = {
+                                "max_iter": max_iter,
+                                "stop_no_improve": stop_no_improve,
+                                "tabu_tenure": tabu_tenure,
+                                "n_neighbors": n_neighbors,
+                                "neighborhood_type": neighborhood_type,
+                            }
 
-            # multiprocessing – równolegle REPEATS razy
-            with Pool(processes=cpu_count()) as pool:
-                parallel_jobs = [
-                    (solve_tsp, D, params) for _ in range(REPEATS)
-                ]
-                results_parallel = pool.map(run_single_repeat, parallel_jobs)
+                            # multiprocessing — równoległe powtórzenia
+                            with Pool(processes=cpu_count()) as pool:
+                                parallel_jobs = [
+                                    (solve_tsp, D, params) for _ in range(REPEATS)
+                                ]
+                                results_parallel = pool.map(run_single_repeat, parallel_jobs)
 
-            # rozpakowanie wyników
-            costs = [c for c, _, _ in results_parallel]
-            routes = [r for _, r, _ in results_parallel]
-            runtimes = [t for _, _, t in results_parallel]
+                            # --- ZBIERANIE DANYCH ---
+                            costs = [c for c, _, _ in results_parallel]
+                            routes = [r for _, r, _ in results_parallel]
+                            runtimes = [t for _, _, t in results_parallel]
 
-            # najlepsza trasa
-            min_cost = min(costs)
-            best_route = routes[costs.index(min_cost)]
-            route_str = "-".join(map(str, best_route))
+                            # najlepsza trasa
+                            min_cost = min(costs)
+                            best_route_overall = routes[costs.index(min_cost)]
+                            route_str = "-".join(map(str, best_route_overall))
 
-            results.append({
-                "instance": tsp_file,
-                "alpha": alpha,
-                "iterations": iterations,
-                "neighborhood_type": neigh_type,
-                "ihc_max_iter": ihc_iter,
-                "ihc_stop_no_improve": ihc_noimp,
-                "use_delta": use_delta,
+                            results.append({
+                                "instance": tsp_file,
+                                "max_iter": max_iter,
+                                "stop_no_improve": stop_no_improve,
+                                "tabu_tenure": tabu_tenure,
+                                "n_neighbors": n_neighbors,
+                                "neighborhood_type": neighborhood_type,
+                                "mean_cost": round(np.mean(costs), 3),
+                                "mean_runtime": np.mean(runtimes),
+                                "min_cost": round(min_cost, 3),
+                                "min_route": route_str,
+                            })
 
-                "mean_cost": round(np.mean(costs), 3),
-                "mean_runtime": np.mean(runtimes),
-                "min_cost": round(min_cost, 3),
-                "min_route": route_str,
-            })
-
-
-    # PODSUMOWANIE
-
+    # ZAPIS WYNIKÓW
     end_total = time.perf_counter()
     elapsed = end_total - start_total
 
-    print(f"\nŁączny czas eksperymentów: {elapsed/60:.2f} min ({elapsed:.2f} sek)\n")
-
     df = pd.DataFrame(results)
-    save_experiment_results(df, time_seconds=int(elapsed), subfolder="GRASP")
+    save_experiment_results(df, filename='tabu_move_results.csv', time_seconds=int(elapsed), subfolder="TS")
+
+
+    # RAPORT
+    print(f"\nŁączny czas eksperymentów: {elapsed/60:.2f} min ({elapsed:.2f} sek)")
 
     print("\nNajlepsze parametry dla każdej instancji:")
 
@@ -157,4 +131,4 @@ if __name__ == "__main__":
         best_row = sub.loc[sub["mean_cost"].idxmin()]
         print(f"\n{inst}")
         # print(best_row["min_cost"], best_row.to_dict())
-        print(f"odległość {best_row['min_cost']} = {best_row.to_dict()}")
+        print(f"odległość {best_row["min_cost"]} = {best_row.to_dict()}")

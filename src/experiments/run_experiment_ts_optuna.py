@@ -1,160 +1,139 @@
 # %%
-# GRASP – SKRYPT EKSPERYMENTALNY
-# Uruchamia serię eksperymentów dla algorytmu GRASP z różnymi
-# parametrami. Struktura analogiczna do IHC, TS, SA itd.
-#
-# Wymagane:
-#   - solve_tsp() z grasp_numba
-#   - run_single_repeat()
-#   - save_experiment_results()
-#   - load_tsp_matrix()
-
-import time
+import optuna
 import pandas as pd
 import numpy as np
-import itertools
 from multiprocessing import Pool, cpu_count
 
+# Import algorytmu Tabu Search i narzędzi pomocniczych
+from src.algorithms.tabu_full_path import solve_tsp
 from src.utils.tsp_loader import load_tsp_matrix
-from src.algorithms.grasp_numba import solve_tsp
-from src.utils.run_single_repeat import run_single_repeat
 from src.utils.result_saver import save_experiment_results
+from src.utils.run_single_repeat import run_single_repeat
 
+# %%
+# Konfiguracja eksperymentu
+INSTANCES = [
+    'Dane_TSP_48.xlsx',
+    'Dane_TSP_76.xlsx',
+    'Dane_TSP_127.xlsx'
+]
 
-# USTAWIENIA EKSPERYMENTU
+# Liczba prób optymalizacji dla każdej instancji (ile razy Optuna wybierze parametry)
+N_TRIALS = 100
 
-TSP_FILES = ["Dane_TSP_48.xlsx", "Dane_TSP_76.xlsx", "Dane_TSP_127.xlsx"]
-# TSP_FILES = ["Dane_TSP_48.xlsx"]
-
-PARAM_GRID_GRASP = {
-    "alpha": [0.2, 0.4, 0.6, 0.8],
-    "iterations": [3_000, 5_000, 8_000, 10_000],
-    "neighborhood_type": ["swap", "insert", "two_opt"],
-    # parametry local-search (IHC-light)
-    "ihc_max_iter": [4_000, 6_000, 8_000],
-    "ihc_stop_no_improve": [400, 800, 1_500],
-    # "use_delta": [True], # zawsze delta
-    "use_delta": [False], # bez delta
-}
-
+# Liczba powtórzeń dla każdego zestawu parametrów
 REPEATS = 5
 
+# %%
+def objective(trial, distance_matrix):
+    """
+    Funkcja celu dla Optuny.
+    Optuna dobiera parametry, my uruchamiamy algorytm wielokrotnie (REPEATS) 
+    i zwracamy wynik (minimalny koszt z powtórzeń).
+    """
+    # Definiujemy zakresy, z których Optuna może losować wartości.
+    max_iter = trial.suggest_int("max_iter", 5_000, 100_000, step=5_000)
+    stop_no_improve = trial.suggest_int("stop_no_improve", 500, 10_000, step=500)
+    
+    tabu_tenure = trial.suggest_int("tabu_tenure", 5, 100, step=5)
+    n_neighbors = trial.suggest_int("n_neighbors", 10, 150, step=10)
+    
+    neighborhood_type = trial.suggest_categorical("neighborhood_type", ["swap", "insert", "two_opt"])
+    
+    params = {
+        "max_iter": max_iter,
+        "stop_no_improve": stop_no_improve,
+        "tabu_tenure": tabu_tenure,
+        "n_neighbors": n_neighbors,
+        "neighborhood_type": neighborhood_type
+    }
+    
+    # Uruchomienie Algorytmu Tabu Search wielokrotnie (równolegle)
+    with Pool(processes=cpu_count()) as pool:
+        parallel_jobs = [
+            (solve_tsp, distance_matrix, params) for _ in range(REPEATS)
+        ]
+        # run_single_repeat zwraca (cost, route, runtime)
+        results_parallel = pool.map(run_single_repeat, parallel_jobs)
+    
+    # Agregacja wyników
+    costs = [res[0] for res in results_parallel]
+    routes = [res[1] for res in results_parallel]
+    runtimes = [res[2] for res in results_parallel]
+    
+    min_cost = min(costs)
+    mean_cost = np.mean(costs)
+    mean_runtime = np.mean(runtimes)
+    
+    # Znalezienie trasy odpowiadającej minimalnemu kosztowi
+    best_idx = costs.index(min_cost)
+    best_route = routes[best_idx]
+    
+    # Zapisanie dodatkowych statystyk w atrybutach triala
+    route_str = "-".join(map(str, best_route))
+    trial.set_user_attr("min_route", route_str)
+    trial.set_user_attr("mean_cost", mean_cost)
+    trial.set_user_attr("mean_runtime", mean_runtime)
+    
+    # Optuna minimalizuje wartość zwracaną. 
+    # Zwracamy min_cost (najlepszy wynik z serii), aby znaleźć parametry dające szansę na najlepszy wynik.
+    # Można by też zwracać mean_cost, jeśli zależy nam na stabilności.
+    return min_cost
 
+# %%
 if __name__ == "__main__":
-    results = []
+    experiment_results = []
 
-    # ROZGRZANIE
+    for instance_file in INSTANCES:
+        print(f"\nOptymalizacja dla instancji: {instance_file}")
 
-    print("Rozgrzewanie Numba (kompilacja GRASP + IHC-light)...")
+        distance_matrix = load_tsp_matrix(instance_file)
 
-    D_tmp = load_tsp_matrix(TSP_FILES[0])
+        sampler = optuna.samplers.TPESampler(seed=42)
+        study = optuna.create_study(direction="minimize", sampler=sampler)
 
-    # poprawna rozgrzewka: solve_tsp wymaga neighborhood_type jako string
-    _ = solve_tsp(D_tmp, {
-        "alpha": 0.3,
-        "iterations": 2,
-        "neighborhood_type": "swap",
-        "ihc_max_iter": 50,
-        "ihc_stop_no_improve": 10,
-        "use_delta": False,
-    })
+        # Parametry startowe (warm start)
+        study.enqueue_trial({
+            "max_iter": 5_000,
+            "stop_no_improve": 500,
+            "tabu_tenure": 10,
+            "n_neighbors": 30,
+            "neighborhood_type": "two_opt"
+        })
 
-    print("Rozgrzewanie zakończone.\n")
+        study.optimize(lambda trial: objective(trial, distance_matrix), n_trials=N_TRIALS)
 
+        print(f"Najlepsze parametry dla {instance_file}: {study.best_params}")
+        print(f"Najlepszy koszt dla {instance_file}: {study.best_value}")
 
-    # LISTA KOMBINACJI PARAMETRÓW
+        df_trials = study.trials_dataframe()
 
-    all_combos = list(itertools.product(
-        PARAM_GRID_GRASP["alpha"],
-        PARAM_GRID_GRASP["iterations"],
-        PARAM_GRID_GRASP["neighborhood_type"],
-        PARAM_GRID_GRASP["ihc_max_iter"],
-        PARAM_GRID_GRASP["ihc_stop_no_improve"],
-        PARAM_GRID_GRASP["use_delta"],
-    ))
-
-    total = len(all_combos) * len(TSP_FILES)
-    counter = 0
-
-    start_total = time.perf_counter()
-
-
-    # ============================================
-    # GŁÓWNA PĘTLA
-    # ============================================
-
-    for tsp_file in TSP_FILES:
-        print(f"\nInstancja: {tsp_file}")
-        D = load_tsp_matrix(tsp_file)
-
-        for alpha, iterations, neigh_type, ihc_iter, ihc_noimp, use_delta in all_combos:
-
-            counter += 1
-            print(
-                f"[{counter}/{total}] "
-                f"alpha={alpha}, iter={iterations}, neigh={neigh_type}, "
-                f"ihc_iter={ihc_iter}, ihc_noimp={ihc_noimp}, delta={use_delta}"
-            )
-
-            params = {
-                "alpha": alpha,
-                "iterations": iterations,
-                "neighborhood_type": neigh_type,
-                "ihc_max_iter": ihc_iter,
-                "ihc_stop_no_improve": ihc_noimp,
-                "use_delta": use_delta,
+        for _, row in df_trials.iterrows():
+            record = {
+                "instance": instance_file,
+                "max_iter": row.get("params_max_iter"),
+                "tabu_tenure": row.get("params_tabu_tenure"),
+                "n_neighbors": row.get("params_n_neighbors"),
+                "neighborhood_type": row.get("params_neighborhood_type"),
+                "stop_no_improve": row.get("params_stop_no_improve"),
+                # Statystyki z powtórzeń
+                "min_cost": row.get("value"),
+                "mean_cost": row.get("user_attrs_mean_cost"),
+                "mean_runtime": row.get("user_attrs_mean_runtime"),
+                "min_route": row.get("user_attrs_min_route"),
+                "state": row.get("state"),
+                "trial_number": row.get("number")
             }
+            experiment_results.append(record)
 
-            # multiprocessing – równolegle REPEATS razy
-            with Pool(processes=cpu_count()) as pool:
-                parallel_jobs = [
-                    (solve_tsp, D, params) for _ in range(REPEATS)
-                ]
-                results_parallel = pool.map(run_single_repeat, parallel_jobs)
+    # %%
+    if experiment_results:
+        df_final = pd.DataFrame(experiment_results)
 
-            # rozpakowanie wyników
-            costs = [c for c, _, _ in results_parallel]
-            routes = [r for _, r, _ in results_parallel]
-            runtimes = [t for _, _, t in results_parallel]
+        # Sortowanie wyników: najpierw po instancji, potem po numerze triala
+        df_final = df_final.sort_values(by=["instance", "trial_number"])
 
-            # najlepsza trasa
-            min_cost = min(costs)
-            best_route = routes[costs.index(min_cost)]
-            route_str = "-".join(map(str, best_route))
+        save_experiment_results(df_final, time_seconds=0, subfolder="TS_Optuna", sort_by_cost=False)
 
-            results.append({
-                "instance": tsp_file,
-                "alpha": alpha,
-                "iterations": iterations,
-                "neighborhood_type": neigh_type,
-                "ihc_max_iter": ihc_iter,
-                "ihc_stop_no_improve": ihc_noimp,
-                "use_delta": use_delta,
-
-                "mean_cost": round(np.mean(costs), 3),
-                "mean_runtime": np.mean(runtimes),
-                "min_cost": round(min_cost, 3),
-                "min_route": route_str,
-            })
-
-
-    # PODSUMOWANIE
-
-    end_total = time.perf_counter()
-    elapsed = end_total - start_total
-
-    print(f"\nŁączny czas eksperymentów: {elapsed/60:.2f} min ({elapsed:.2f} sek)\n")
-
-    df = pd.DataFrame(results)
-    save_experiment_results(df, time_seconds=int(elapsed), subfolder="GRASP")
-
-    print("\nNajlepsze parametry dla każdej instancji:")
-
-    instances = df["instance"].unique()
-
-    for inst in instances:
-        sub = df[df["instance"] == inst]
-        best_row = sub.loc[sub["mean_cost"].idxmin()]
-        print(f"\n{inst}")
-        # print(best_row["min_cost"], best_row.to_dict())
-        print(f"odległość {best_row['min_cost']} = {best_row.to_dict()}")
+        print("\nWyniki zostały zapisane pomyślnie w folderze project/results/TS_Optuna/")
+        print(df_final[["instance", "trial_number", "min_cost", "mean_cost", "mean_runtime"]].head())
